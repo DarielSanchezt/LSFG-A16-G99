@@ -1,1 +1,62 @@
+name: Build LSFG A16 G99 APK
 
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "*.zip"
+      - ".github/workflows/build-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract source ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)"
+          test -n "$ZIP"
+          rm -rf buildsrc
+          mkdir -p buildsrc
+          unzip -q "$ZIP" -d buildsrc
+          ROOT="$(find buildsrc -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          test -f "$ROOT/lsfg-app/gradlew"
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.0.12077973"
+
+      - name: Build APK
+        shell: bash
+        run: |
+          cd "$ROOT/lsfg-app"
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LSFG-A16-G99-debug
+          path: "${{ env.ROOT }}/lsfg-app/app/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error
